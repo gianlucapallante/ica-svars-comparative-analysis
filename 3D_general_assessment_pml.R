@@ -23,11 +23,12 @@ source(here("functions_to_load.R"),local = T)
 
 ## Number of initialization Hypercybe sampling
 set.seed(55)
-lhs            <- 2*pi*improvedLHS(n = n_lhs, k = 2)
+lhs <- 2*pi*improvedLHS(n = n_lhs, k = 3)
 
 for(z in 1:length(SEQ)){
   print(paste0("experiment ", z, " - first MC ", Sys.time()))
   print(paste0("sample size = ",n," initialization =  ", n_lhs, " MC = ",mc, ", size = ",ncol(lhs)))
+  
   nr_cluster <- choose_cluster
   cl <- makeCluster(nr_cluster)
   registerDoParallel(cl)
@@ -43,8 +44,9 @@ for(z in 1:length(SEQ)){
                                   
                                   e1     <- stdEpsrnd(type = 'general',dof = 5, n = n, p = SEQ[z])
                                   e2     <- stdEpsrnd(type = 'general',dof = 5, n = n, p = SEQ[z])
-                                  E        <- cbind(e1,e2)
+                                  e3     <- stdEpsrnd(type = 'general',dof = 5, n = n, p = SEQ[z])
                                   
+                                  E      <- cbind(e1,e2,e3)
                                   Atrue            <- mixmat(p = ncol(lhs))
                                   U                <- Atrue %*% t(E)
                                   sigg             <- cov(t(U))
@@ -54,50 +56,43 @@ for(z in 1:length(SEQ)){
                                   
                                   ## Run methods and record best initialization matrix
                                   for (kk in 1:nrow(lhs)){
-                                    orth_matrix_init  <- matrix(data = c(cos(lhs[kk]), -sin(lhs[kk]), 
-                                                                         sin(lhs[kk]),  cos(lhs[kk])), ncol = 2,byrow = T)
+                                    ## Initialization
+                                    winitx             <- matrix(data = c(1, 0, 0,
+                                                                          0, cos(lhs[kk,1]), -sin(lhs[kk,1]),
+                                                                          0, sin(lhs[kk,1]),  cos(lhs[kk,1])), ncol = 3, byrow = T)
+                                    winity             <- matrix(data = c(cos(lhs[kk,2]), 0, -sin(lhs[kk,2]), 
+                                                                          0,              1,  0,
+                                                                          sin(lhs[kk,2]), 0,  cos(lhs[kk,2])), ncol = 3, byrow = T)
+                                    winitz             <- matrix(data = c(cos(lhs[kk,3]), -sin(lhs[kk,3]), 0,
+                                                                          sin(lhs[kk,3]),  cos(lhs[kk,3]), 0,
+                                                                          0,               0,              1), ncol = 3, byrow = T)
+                                    ## Store initial conditions
                                     
+                                    orth_matrix_init  <- winitx %*% winity %*% winitz
                                     p.start[[kk]]           <- as.vector(C[[i]] %*% orth_matrix_init)
-                                    
                                     ## Constrained optimization with more parameters than equations
-                                    
-                                    if (kurtosis(e1)-3>0 & kurtosis(e2)-3>0){
+                                    if (kurtosis(e1)>3 & kurtosis(e2)>3 | kurtosis(e1)>3 & kurtosis(e3)>3 | kurtosis(e2)>3 & kurtosis(e3)>3){
                                       ## super-gaussian case
-                                      please           <- auglag(par = p.start[[kk]], fn = pseudo.log.lik2D.super, heq = orth.constr2D,
-                                                                 control.outer = list(trace=F))$par
+                                      please           <- auglag(par = p.start[[kk]], fn = pseudo.log.lik3D.super, heq = orth.constr3D,
+                                                                 control.outer = list(trace=F))$par 
+                                      
                                     }else{
-                                      ## sub-gaussian case
-                                      please           <- auglag(par = p.start[[kk]], fn = pseudo.log.lik2D.sub, heq = orth.constr2D,
-                                                                 control.outer = list(trace=F))$par
+                                      ##sub-gaussian case
+                                      please           <- auglag(par = p.start[[kk]], fn = pseudo.log.lik3D.sub, heq = orth.constr3D,
+                                                                 control.outer = list(trace=F))$par 
                                     }
-                                    
-                                    Orth.hat           <- matrix(data = please,nrow = 2,byrow = F)
+                                    Orth.hat           <- matrix(data = please,nrow = 3,byrow = F)
                                     B.init[[kk]]       <- C[[i]] %*% Orth.hat
                                     ilm.index[kk]      <- MD(W.hat = solve(B.init[[kk]]),A = Atrue)
-                                    
                                   }
-                                  
                                   ## Choose the best initialization
                                   best_init        <- p.start[[which.min(ilm.index)]]
                                   FR_pml_nt[i]     <- ilm.index[[which.min(ilm.index)]]
                                   A.pml[[i]]       <- B.init[[which.min(ilm.index)]]
                                   
-                                  if (kurtosis(e1)-3>0 & kurtosis(e2)-3>0){
-                                    ## super-gaussian case
-                                    please           <- auglag(par = best_init, fn = pseudo.log.lik2D.super, heq = orth.constr2D,
-                                                               control.outer = list(trace=F))$par
-                                  }else{
-                                    ## sub-gaussian case
-                                    please           <- auglag(par = best_init, fn = pseudo.log.lik2D.sub, heq = orth.constr2D,
-                                                               control.outer = list(trace=F))$par
-                                  }
-                                  
-                                  Orth.true[[i]]     <- matrix(data = please,nrow = 2,byrow = F)
-                                  A.pml[[i]]         <- C[[i]] %*% Orth.true[[i]]
-                                  FR_pml_nt[i]       <- MD(W.hat = solve(A.pml[[i]]),A = Atrue)
-                                  
-                                  
                                   A.ID.pml[[i]]        <- maxfinder(A = A.pml[[i]])$A.id
+                                  Orth.max[[i]]        <- solve(C[[i]]) %*% A.ID.pml[[i]]
+                                  
                                   
                                   
                                   mc_results   <- list(Choleski        = C[[i]],
@@ -120,4 +115,4 @@ inference_results <- pippo
 names(inference_results) <- paste0("p_",round(SEQ,2))
 
 dir.create(here("results"))
-save(inference_results,file = here("results", paste0("2D_pml_general_n",n,".RData")))
+save(inference_results,file = here("results", paste0("3D_pml_general_n",n,".RData")))
