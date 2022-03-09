@@ -24,14 +24,14 @@ source(here("functions_to_load.R"),local = T)
 ## Create the distribution of the empirical copula under the null of inpendence(for CvM)
 dd <- NULL
 if (is.null(dd)) {
-  dd <- indepTestSim(n, ncol(Btrue3D), verbose = T)
+  dd <- indepTestSim(n, ncol(Btrue2Dz), verbose = T)
 }
-## Number of initialization Hypercybe sampling
+
 set.seed(55)
-lhs    <- 2*pi*improvedLHS(n = n_lhs, k = 3)
+lhs    <- 2*pi*improvedLHS(n = n_lhs, k = 2)
 
 for(z in 1:length(SEQ)){
-  print(paste0("experiment ", z, " - first MC ", Sys.time()))
+  print(paste0("experiment ", z, " - first MC ", Sys.time(), "+1h"))
   print(paste0("sample size = ",n," initialization =  ", n_lhs, " MC = ",mc))
   nr_cluster <- choose_cluster
   cl <- makeCluster(nr_cluster)
@@ -46,14 +46,11 @@ for(z in 1:length(SEQ)){
                                   Sys.sleep(1)  
                                   
                                   
-                                  ## Run methods and record best initialization matrix
                                   eps1             <- stdEpsrnd(type = 'general', n = n, p = SEQ[z])
                                   eps2             <- stdEpsrnd(type = 'general', n = n, p = SEQ[z])
-                                  eps3             <- stdEpsrnd(type = 'general', n = n, p = SEQ[z])
                                   pvalJB1[j]       <- as.numeric(ajb.norm.test(x = eps1, nrepl = n)$p.value)
                                   pvalJB2[j]       <- as.numeric(ajb.norm.test(x = eps2, nrepl = n)$p.value)
-                                  pvalJB3[j]       <- as.numeric(ajb.norm.test(x = eps3, nrepl = n)$p.value)
-                                  E                <- cbind(eps1, eps2, eps3)             # n*k matrix of structural shocks (iid)
+                                  E                <- cbind(eps1, eps2)             # n*k matrix of structural shocks (iid)
                                   Atrue            <- mixmat(p = ncol(lhs))
                                   U                <- Atrue %*% t(E)
                                   
@@ -66,21 +63,13 @@ for(z in 1:length(SEQ)){
                                   for (kk in 1:nrow(lhs)){
                                     if((kk %% 20)==0) print(paste0("initialization #",kk))
                                     ## initialization
-                                    winitx             <- matrix(data = c(1, 0, 0,
-                                                                          0, cos(lhs[kk,1]), -sin(lhs[kk,1]),
-                                                                          0, sin(lhs[kk,1]),  cos(lhs[kk,1])), ncol = 3, byrow = T)
-                                    winity             <- matrix(data = c(cos(lhs[kk,2]), 0, -sin(lhs[kk,2]), 
-                                                                          0,              1,  0,
-                                                                          sin(lhs[kk,2]), 0,  cos(lhs[kk,2])), ncol = 3, byrow = T)
-                                    winitz             <- matrix(data = c(cos(lhs[kk,3]), -sin(lhs[kk,3]), 0,
-                                                                          sin(lhs[kk,3]),  cos(lhs[kk,3]), 0,
-                                                                          0,               0,              1), ncol = 3, byrow = T)
-                                    ## Store initial conditions
+                                    winit[[kk]]            <- matrix(data = c(cos(lhs[kk]), -sin(lhs[kk]), 
+                                                                              sin(lhs[kk]),  cos(lhs[kk])), ncol = 2,byrow = T)
                                     
-                                    winit[[kk]]        <- winitx %*% winity %*% winitz
+                                    
                                     
                                     ## Dist Cov 
-                                    dc_init[[kk]]      <- steadyICA(X = u_chol, n.comp = ncol(lhs), w.init = winit[[kk]], 
+                                    dc_init[[kk]]      <- steadyICA(X = u_chol, n.comp = 2, w.init = winit[[kk]], 
                                                                     PIT = F, symmetric = F,maxit = 1000,verbose = F)
                                     
                                     
@@ -89,7 +78,7 @@ for(z in 1:length(SEQ)){
                                     ## The one and only!
                                     Wscaled_dc[[kk]]   <- solve(dc_init[[kk]]$W) %*% solve(C)
                                     ## fastICA  
-                                    ica_init[[kk]]     <- fastICA(u_chol, n.comp = ncol(lhs), tol = 1e-14, w.init = winit[[kk]], 
+                                    ica_init[[kk]]     <- fastICA(u_chol, n.comp = 2, tol = 1e-14, w.init = winit[[kk]], 
                                                                   maxit = 1000,verbose = FALSE)
                                     Wica[[kk]]         <- t((ica_init[[kk]]$K) %*% (ica_init[[kk]]$W))
                                     Wscal_ica[[kk]]    <- rescaleVar(W_hat = Wica[[kk]], ut = t(u_chol))$Ws
@@ -113,7 +102,7 @@ for(z in 1:length(SEQ)){
                                   icares_MD[[j]]    <- Wscaled_ica[[which.min(x = FR_ica_nt)]]
                                   
                                   
-                                  #### Cvm method: Adapted from svars R package
+                                  ### Cvm method
                                   if (is.null(dd)) {
                                     dd <- indepTestSim(n, ncol(E), verbose = F)
                                   }
@@ -169,25 +158,28 @@ for(z in 1:length(SEQ)){
                                   
                                   
                                   mc_results <- list(A.dc     = A.dc[[j]], 
-                                    A.ica    = A.ica[[j]],
-                                    A.cvm    = A.cvm[[j]],
-                                    C        = C,
-                                    U        = U,
-                                    Atrue    = Atrue,
-                                    perfm_dc  = perfm_dc[j],  
-                                    perfm_ica = perfm_ica[[j]],
-                                    perfm_cvm = perfm_cvm[[j]],
-                                    FR_ica_nt  = FR_ica_nt,
-                                    pvalJB1   = pvalJB1[j],
-                                    pvalJB2   = pvalJB2[j],
-                                    pvalJB3   = pvalJB3[j],
-                                    Wscaled_ica = Wscaled_ica,
-                                    Wscaled_dc  = Wscaled_dc,
-                                    icares_MD = icares_MD[[j]],
-                                    DC_MD     = DC_MD[[j]])
+                                                     A.ica    = A.ica[[j]],
+                                                     A.cvm    = A.cvm[[j]],
+                                                     Atrue    = Atrue,
+                                                     C        = C,
+                                                     U        = U,
+                                                     perfm_dc  = perfm_dc[j],  
+                                                     perfm_ica = perfm_ica[[j]],
+                                                     perfm_cvm = perfm_cvm[[j]],
+                                                     FR_dc_nt  = FR_dc_nt,
+                                                     FR_ica_nt = FR_ica_nt,
+                                                     icares_MD = icares_MD[[j]],
+                                                     DC_MD     = DC_MD[[j]],
+                                                     Wscaled_ica = Wscaled_ica,
+                                                     Wscaled_dc  = Wscaled_dc)
                                 }
   
   stopCluster(cl)
+  
+  ppval1 <- mean(pvalJB1)
+  ppval2 <- mean(pvalJB2)
+  ppval3 <- mean(pvalJB3)
+  
   
   pippo[[z]]           <- list(mc_results = ciao)
   
@@ -196,10 +188,10 @@ for(z in 1:length(SEQ)){
 
 
 inference_results <- pippo
+
 names(inference_results) <- paste0("p_",round(SEQ,2))
 
 dir.create(here("results"))
-
-save(inference_results,file = here("results", paste0("3D_other_ica_general_n",n,".RData")))
+save(inference_results,file = here("results", paste0("2D_other_ica_general_n",n,".RData")))
 rm(pippo)
 
