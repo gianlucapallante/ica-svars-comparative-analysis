@@ -12,6 +12,10 @@ seq2   <- seq(from = 4, to = 100, length.out = 5) ## Sequence of p-Generalized p
 SEQ    <- as.numeric(c(seq1, seq2))
 
 ## File with variables definitions and parameter settings
+
+n              <- 100 # sample size
+choose_cluster <- 3
+
 source(here("confg_file.R"),local = T)
 
 #### Codes to be updated and experiment setting ##
@@ -19,8 +23,7 @@ source(here("functions_to_load.R"),local = T)
 
 ## Number of initialization Hypercybe sampling
 set.seed(55)
-lhs <- 2*pi*improvedLHS(n = n_lhs, k = 2)
-choose_cluster <- 3
+lhs            <- 2*pi*improvedLHS(n = n_lhs, k = 2)
 
 for(z in 1:length(SEQ)){
   print(paste0("experiment ", z, " - first MC ", Sys.time()))
