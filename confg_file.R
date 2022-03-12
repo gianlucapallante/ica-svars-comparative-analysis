@@ -2,7 +2,7 @@
 
 ## Experiment setting
 
-mc     <- 3 ## Monte Carlo replications
+mc     <- 1000 ## Monte Carlo replications
 n_lhs  <- 500 ## Number of parameters' configurations for initialization
 
 
