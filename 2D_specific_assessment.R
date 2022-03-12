@@ -23,34 +23,30 @@ source(here("functions_to_load.R"),local = T)
 
 ## Create the distribution of the empirical copula under the null of inpendence(for CvM)
 
-
 dd <- NULL
 if (is.null(dd)) {
-  dd <- indepTestSim(n, ncol(Btrue3D), verbose = T)
+  dd <- indepTestSim(n, ncol(Btrue2Dz), verbose = T)
 }
 
 
 ## Number of initialization Hypercybe sampling
 set.seed(55)
-lhs <- 2*pi*improvedLHS(n = n_lhs, k = 3)
+lhs <- 2*pi*improvedLHS(n = n_lhs, k = 2)
 
 pippo <- vector("list",length(SEQ))
 for(z in 1:length(SEQ)){
   print(paste0("experiment ", z, " - first MC ", Sys.time()))
-  print(paste0("sample size = ",n," initialization =  ", n_lhs, " MC = ",mc, ", size = ",ncol(Btrue3D)))
+  print(paste0("sample size = ",n," initialization =  ", n_lhs, " MC = ",mc, ", size = ",ncol(Btrue2Dz)))
   j <- 1
   ## Run methods and record best initialization matrix
   set.seed(11)
   eps1             <- stdEpsrnd(type = 'general', n = n, p = SEQ[z])
   set.seed(22)
   eps2             <- stdEpsrnd(type = 'general', n = n, p = SEQ[z])
-  set.seed(33)
-  eps3             <- stdEpsrnd(type = 'general', n = n, p = SEQ[z])
   pvalJB1[j]      <- as.numeric(ajb.norm.test(x = eps1, nrepl = n)$p.value)
   pvalJB2[j]      <- as.numeric(ajb.norm.test(x = eps2, nrepl = n)$p.value)
-  pvalJB3[j]      <- as.numeric(ajb.norm.test(x = eps3, nrepl = n)$p.value)
-  E                <- cbind(eps1, eps2, eps3)             # n*k matrix of structural shocks (iid)
-  Atrue            <- Btrue3D
+  E                <- cbind(eps1, eps2)             # n*k matrix of structural shocks (iid)
+  Atrue            <- Btrue2Dz
   U                <- Atrue %*% t(E)
   sigg             <- cov(t(U))
   C                <- t(chol(sigg))
@@ -106,18 +102,9 @@ for(z in 1:length(SEQ)){
   for (kk in 1:nrow(lhs)){
     ## Initialization
     ## Givens rotation matrices
-    winitx             <- matrix(data = c(1, 0, 0,
-                                          0, cos(lhs[kk,1]), -sin(lhs[kk,1]),
-                                          0, sin(lhs[kk,1]),  cos(lhs[kk,1])), ncol = 3, byrow = T)
-    winity             <- matrix(data = c(cos(lhs[kk,2]), 0, -sin(lhs[kk,2]), 
-                                          0,              1,  0,
-                                          sin(lhs[kk,2]), 0,  cos(lhs[kk,2])), ncol = 3, byrow = T)
-    winitz             <- matrix(data = c(cos(lhs[kk,3]), -sin(lhs[kk,3]), 0,
-                                          sin(lhs[kk,3]),  cos(lhs[kk,3]), 0,
-                                          0,               0,              1), ncol = 3, byrow = T)
-    ## Store initial conditions
+    winit[[kk]]            <- matrix(data = c(cos(lhs[kk]), -sin(lhs[kk]), 
+                                              sin(lhs[kk]),  cos(lhs[kk])), ncol = 2,byrow = T)
     
-    winit[[kk]]        <- winitx %*% winity %*% winitz
     
     
     ##Dist Cov
@@ -210,7 +197,7 @@ for(z in 1:length(SEQ)){
   print(paste0("Parallel starts, experiment ", z))
   ## Initializing parallel over MC
   
-  nr_cluster <- choose_cluster 
+  nr_cluster <- choose_cluster
   cl <- makeCluster(nr_cluster)
   registerDoParallel(cl)
   ## Results reproducible 
@@ -226,11 +213,9 @@ for(z in 1:length(SEQ)){
                                   
                                   eps1             <- stdEpsrnd(type = 'general', n = n, p = SEQ[z])
                                   eps2             <- stdEpsrnd(type = 'general', n = n, p = SEQ[z])
-                                  eps3             <- stdEpsrnd(type = 'general', n = n, p = SEQ[z])
                                   pvalJB1[j]      <- as.numeric(ajb.norm.test(x = eps1, nrepl = n)$p.value)
                                   pvalJB2[j]      <- as.numeric(ajb.norm.test(x = eps2, nrepl = n)$p.value)
-                                  pvalJB3[j]      <- as.numeric(ajb.norm.test(x = eps2, nrepl = n)$p.value)
-                                  E                <- cbind(eps1, eps2, eps3)             # n*k matrix of structural shocks (iid)
+                                  E                <- cbind(eps1, eps2)             # n*k matrix of structural shocks (iid)
                                   U                <- Atrue %*% t(E)
                                   
                                   # Sphering data
@@ -334,8 +319,6 @@ for(z in 1:length(SEQ)){
                                                           perfm_cvm = perfm_cvm[[j]],
                                                           pvalJB1   = pvalJB1[j],
                                                           pvalJB2   = pvalJB2[j],
-                                                          Wscaled_ica = Wscaled_ica,
-                                                          Wscaled_dc  = Wscaled_dc,
                                                           icares_MD = icares_MD[[j]],
                                                           DC_MD     = DC_MD[[j]])
                                   
@@ -363,5 +346,5 @@ inference_results <- pippo
 names(inference_results) <- paste0("p_",round(SEQ,2))
 
 dir.create(here("results"))
-save(inference_results,file = here("results", paste0("3D_warp_spec_n",n,".RData")))
+save(inference_results,file = here("results", paste0("2D_warp_spec_n",n,".RData")))
 rm(pippo)
