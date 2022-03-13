@@ -1,5 +1,29 @@
-## General assessment PML
+## Specific assessment
+## Load packege here for managing workflow
+
+if(length(which(installed.packages() %in% c("rstudioapi") == T)) == 0){
+  install.packages("rstudioapi")
+  library(rstudioapi)
+}else{library(rstudioapi)}
+
+if(length(which(installed.packages() %in% c("here") == T)) == 0){
+  install.packages("here")
+  library(here)
+}else{library(here)}
+
+## Open ica-svars-comparative-analysis.Rproj
+if(!base::grepl(x = here(),pattern = "ica-svars-comparative-analysis")){
+  file_path <- file.choose()
+}
+
+if(!base::grepl(x = here(),pattern = "ica-svars-comparative-analysis")){
+  openProject(file_path)
+}
+
+## Check that working directory contains the ica-svars-comparative-analysis.Rproj file
 library(here)
+dr_here()
+here()
 
 ## Independent Component Analysis with different methods (MC analysis)
 
@@ -345,6 +369,8 @@ inference_results <- pippo
 
 names(inference_results) <- paste0("p_",round(SEQ,2))
 
-dir.create(here("results"))
+if (!dir.exists(here("results"))) {
+  dir.create(here("results"))
+}
 save(inference_results,file = here("results", paste0("2D_warp_spec_n",n,".RData")))
 rm(pippo)

@@ -1,6 +1,31 @@
-### P-Generalized densities ####
+## Code to replicate Figure 1 of the paper
+## Load packege here for managing workflow
+
+if(length(which(installed.packages() %in% c("rstudioapi") == T)) == 0){
+  install.packages("rstudioapi")
+  library(rstudioapi)
+}else{library(rstudioapi)}
+
+if(length(which(installed.packages() %in% c("here") == T)) == 0){
+  install.packages("here")
+  library(here)
+}else{library(here)}
+
+## Open ica-svars-comparative-analysis.Rproj
+if(!base::grepl(x = here(),pattern = "ica-svars-comparative-analysis")){
+  file_path <- file.choose()
+}
+
+if(!base::grepl(x = here(),pattern = "ica-svars-comparative-analysis")){
+  openProject(file_path)
+}
+
+## Check that working directory contains the ica-svars-comparative-analysis.Rproj file
 library(here)
-library(pgnorm)
+dr_here()
+here()
+## Independent Component Analysis with different methods (MC analysis)
+source(paste0(here(),"/Rpackages.R"),local = T)
 
 source(here("functions_to_load.R"),local = T)
 n <- 500

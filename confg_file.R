@@ -2,8 +2,8 @@
 
 ## Experiment setting
 
-mc     <- 1000 ## Monte Carlo replications
-n_lhs  <- 500 ## Number of parameters' configurations for initialization
+mc     <- 4 ## Monte Carlo replications
+n_lhs  <- 5 ## Number of parameters' configurations for initialization
 
 
 angles <- seq(from = 0.01, to = (pi/2-0.01),length.out = 29) ## Rotation angles in Givens Rotation matrices

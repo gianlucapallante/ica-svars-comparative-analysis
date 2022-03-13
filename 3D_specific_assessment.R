@@ -1,8 +1,30 @@
-## General assessment PML
+## Specific assessment
+## Load packege here for managing workflow
+
+if(length(which(installed.packages() %in% c("rstudioapi") == T)) == 0){
+  install.packages("rstudioapi")
+  library(rstudioapi)
+}else{library(rstudioapi)}
+
+if(length(which(installed.packages() %in% c("here") == T)) == 0){
+  install.packages("here")
+  library(here)
+}else{library(here)}
+
+## Open ica-svars-comparative-analysis.Rproj
+if(!base::grepl(x = here(),pattern = "ica-svars-comparative-analysis")){
+  file_path <- file.choose()
+}
+
+if(!base::grepl(x = here(),pattern = "ica-svars-comparative-analysis")){
+  openProject(file_path)
+}
+
+## Check that working directory contains the ica-svars-comparative-analysis.Rproj file
 library(here)
-
+dr_here()
+here()
 ## Independent Component Analysis with different methods (MC analysis)
-
 source(paste0(here(),"/Rpackages.R"),local = T)
 
 ## Number of shape parameter values (in the specific assessment and for inference table we only focuse on 4 distributional scenario - See paper)
@@ -28,7 +50,6 @@ dd <- NULL
 if (is.null(dd)) {
   dd <- indepTestSim(n, ncol(Btrue3D), verbose = T)
 }
-
 
 ## Number of initialization Hypercybe sampling
 set.seed(55)
@@ -362,6 +383,8 @@ inference_results <- pippo
 
 names(inference_results) <- paste0("p_",round(SEQ,2))
 
-dir.create(here("results"))
+if (!dir.exists(here("results"))) {
+  dir.create(here("results"))
+}
 save(inference_results,file = here("results", paste0("3D_warp_spec_n",n,".RData")))
 rm(pippo)
