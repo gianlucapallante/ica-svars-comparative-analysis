@@ -8,7 +8,7 @@ best_permutation <- function(W,W_boot) {
   library(gtools)
   nr <- nrow(W)
   
-  allperm <- permutations(n=nr,r=nr)
+  allperm <- gtools::permutations(n=nr,r=nr)
   
   # to switch signs in ICs: first all possibilities with 1 IC switched, than with two, ...
   ls <- list()
@@ -531,6 +531,139 @@ id.fastICA.gp <- function (x, ww, ordering)
     Tob <- nrow(u)
     k <- ncol(u)
     residY <- u
+  } else {
+    u <- residuals(x)
+    Tob <- nrow(u)
+    k <- ncol(u)
+    residY <- u
+  }
+  if (inherits(x, "var.boot")) {
+    p <- x$p
+    y <- t(x$y)
+    yOut = x$y
+    type = x$type
+    coef_x = x$coef_x
+  } else if (inherits(x, "varest")) {
+    p <- x$p
+    y <- t(x$y)
+    yOut = x$y
+    type = x$type
+    coef_x = coef(x)
+  } else if (inherits(x, "nlVar")) {
+    p <- x$lag
+    y <- t(x$model[, 1:k])
+    yOut <- x$model[, 1:k]
+    coef_x <- t(coef(x))
+    if (inherits(x, "VECM")) {
+      coef_x <- t(VARrep(x))
+    }
+    if (rownames(coef_x)[1] %in% c("Intercept", "constant")) {
+      coef_x <- coef_x[c(2:nrow(coef_x), 1), ]
+    } else if (rownames(coef_x)[1] == "Trend") {
+      coef_x <- coef_x[c(2:nrow(coef_x), 1), ]
+    } 
+    if (rownames(coef_x)[1] %in% c("Intercept", "constant", 
+                                   "Trend")) {
+      coef_x <- coef_x[c(2:nrow(coef_x), 1), ]
+    }
+    type <- x$include
+    coef_x <- split(coef_x, rep(1:ncol(coef_x), each = nrow(coef_x)))
+    coef_x <- lapply(coef_x, as.matrix)
+  } else if (inherits(x, "list")) {
+    p <- x$order
+    y <- t(x$data)
+    yOut <- x$data
+    coef_x <- t(coef(x))
+    coef_x <- x$coef
+    if (x$cnst == TRUE) {
+      coef_x <- coef_x[c(2:nrow(coef_x), 1), ]
+      type = "const"
+    }
+    coef_x <- split(coef_x, rep(1:ncol(coef_x), each = nrow(coef_x)))
+    coef_x <- lapply(coef_x, as.matrix)
+  } else if (inherits(x, "vec2var")) {
+    coef_x <- vector("list", length = k)
+    names(coef_x) <- colnames(x$y)
+    p <- x$p
+    y <- t(x$y)
+    yOut <- x$y
+    for (i in seq_len(k)) {
+      for (j in seq_len(p)) coef_x[[i]] <- c(coef_x[[i]], 
+                                             x$A[[j]][i, ])
+      coef_x[[i]] <- c(coef_x[[i]], x$deterministic[i, 
+      ])
+    }
+    coef_x <- lapply(coef_x, matrix)
+    type <- "const"
+  } else {
+    stop("Object class is not supported")
+  }
+  sigg <- crossprod(u)/(Tob - 1 - k * p)
+  P_chol <- t(chol(sigg))
+  u_chol <- t(solve(P_chol) %*% t(u))
+  fast.ica           <- fastICA(u_chol, n.comp = k, tol = 1e-14, w.init = ww, 
+                                maxit = 1000,verbose = FALSE)
+  W.ica              <- t((fast.ica$K) %*% (fast.ica$W))
+  W.scal.ica         <- rescaleVar(W_hat = W.ica, ut = t(u_chol))$Ws
+  Wstar              <- W.scal.ica %*% solve(P_chol)
+  Praw               <- solve(Wstar)
+  if (ordering == "frob") {
+    P      <- Praw %*% myfrob(A.hat = Praw,A = x$B_original)
+  }else if(ordering == "maxfinder"){
+    P      <- maxfinder(A = Praw)$A.id
+  }else{
+    stop("Specifiy method for column-permutation indeterminacy")
+  }
+  
+  if (inherits(x, "var.boot")) {
+    A_hat <- coef_x
+  }
+  else {
+    A <- matrix(0, nrow = k, ncol = k * p)
+    for (i in 1:k) {
+      A[i, ] <- coef_x[[i]][1:(k * p), 1]
+    }
+    A_hat <- A
+    if (type == "const") {
+      v <- rep(1, k)
+      for (i in 1:k) {
+        v[i] <- coef_x[[i]][(k * p + 1), 1]
+      }
+      A_hat <- cbind(v, A)
+    }
+    else if (type == "trend") {
+      trend <- rep(1, k)
+      for (i in 1:k) {
+        trend[i] <- coef_x[[i]][(k * p + 1), 1]
+      }
+      A_hat <- cbind(trend, A)
+    }
+    else if (type == "both") {
+      v <- rep(1, k)
+      for (i in 1:k) {
+        v[i] <- coef_x[[i]][(k * p + 1), 1]
+      }
+      trend <- rep(1, k)
+      for (i in 1:k) {
+        trend[i] <- coef_x[[i]][(k * p + 2), 1]
+      }
+      A_hat <- cbind(v, trend, A)
+    }
+  }
+  result <- list(B = P, A_hat = A_hat, method = "FastICA", 
+                 n = Tob, type = type, y = yOut, p = unname(p), K = k)
+  class(result) <- "svars"
+  return(result)
+}
+
+id.pml.gp <- function (x, ww, ordering) 
+{
+  p.start <- as.vector(ww)
+  if (inherits(x, "var.boot")) {
+    u <- x$residuals
+    Tob <- nrow(u)
+    k <- ncol(u)
+    residY <- u
   }
   else {
     u <- residuals(x)
@@ -607,13 +740,187 @@ id.fastICA.gp <- function (x, ww, ordering)
   }
   sigg <- crossprod(u)/(Tob - 1 - k * p)
   P_chol <- t(chol(sigg))
-  u_chol <- t(solve(P_chol) %*% t(u))
-  fast.ica           <- fastICA(u_chol, n.comp = k, tol = 1e-14, w.init = ww, 
-                                maxit = 1000,verbose = FALSE)
-  W.ica              <- t((fast.ica$K) %*% (fast.ica$W))
-  W.scal.ica         <- rescaleVar(W_hat = W.ica, ut = t(u_chol))$Ws
-  Wstar              <- W.scal.ica %*% solve(P_chol)
-  Praw               <- solve(Wstar)
+  
+  u_cholb <- t(solve(P_chol) %*% t(u))
+  tu_cholb<- t(u_cholb)
+  #rm(u_chol,tu_chol)
+  n <- length(x = u_cholb[,1])
+  if(k==5){
+    pseudo.log.lik5D.super        <- function(c){
+      c11 <- c[1]
+      c21 <- c[2]
+      c31 <- c[3] 
+      c41 <- c[4]
+      c51 <- c[5]
+      c12 <- c[6]
+      c22 <- c[7]
+      c32 <- c[8]
+      c42 <- c[9]
+      c52 <- c[10]
+      c13 <- c[11]
+      c23 <- c[12]
+      c33 <- c[13]
+      c43 <- c[14]
+      c53 <- c[15]
+      c14 <- c[16]
+      c24 <- c[17]
+      c34 <- c[18]
+      c44 <- c[19]
+      c54 <- c[20]
+      c15 <- c[21]
+      c25 <- c[22]
+      c35 <- c[23]
+      c45 <- c[24]
+      c55 <- c[25]
+      
+      c.1y <- c11*u_chol[,1] + c21*u_chol[,2] + c31*u_chol[,3] + c41*u_chol[,4] + c51*u_chol[,5]
+      c.2y <- c12*u_chol[,1] + c22*u_chol[,2] + c32*u_chol[,3] + c42*u_chol[,4] + c52*u_chol[,5]
+      c.3y <- c13*u_chol[,1] + c23*u_chol[,2] + c33*u_chol[,3] + c43*u_chol[,4] + c53*u_chol[,5]
+      c.4y <- c14*u_chol[,1] + c24*u_chol[,2] + c34*u_chol[,3] + c44*u_chol[,4] + c54*u_chol[,5]
+      c.5y <- c15*u_chol[,1] + c25*u_chol[,2] + c35*u_chol[,3] + c45*u_chol[,4] + c55*u_chol[,5]
+      #P <- 1/(2 * p^(1/p - 1))*gamma(1/p)
+      g <- rep(NA,1)
+      g[1] <- -1*(n*log(1/sqrt(2*pi))-sum((c.1y)^2/2) + 
+                    n*log(gamma((5+1)/2)/(sqrt(5*pi)*gamma(5/2)))-((5+1)/2)*sum(log(1+(c.2y)^2/5)) +
+                    n*log(gamma((6+1)/2)/(sqrt(6*pi)*gamma(6/2)))-((6+1)/2)*sum(log(1+(c.3y)^2/6)) +
+                    n*log(gamma((7+1)/2)/(sqrt(7*pi)*gamma(7/2)))-((7+1)/2)*sum(log(1+(c.4y)^2/7)) + 
+                    n*log(gamma((5+1)/2)/(sqrt(5*pi)*gamma(5/2)))-((5+1)/2)*sum(log(1+(c.5y)^2/5)))  
+      g
+    }
+    pseudo.log.lik5D.sub          <- function(c) {
+      c11 <- c[1]
+      c21 <- c[2]
+      c12 <- c[3]
+      c22 <- c[4]
+      
+      c.1y <- c11*u_chol[[i]][,1] + c21*u_chol[[i]][,2]
+      c.2y <- c12*u_chol[[i]][,1] + c22*u_chol[[i]][,2]
+      
+      #P <- 1/(2 * p^(1/p - 1))*gamma(1/p)
+      g <- rep(NA,1)
+      g[1] <- -1*(n*log(1/sqrt(2*pi)) + sum(pi*(c.1y)^2+log(cosh((pi/2)*c.1y))) + 
+                    n*log(1/sqrt(2*pi)) + sum(pi*(c.2y)^2+log(cosh((pi/2)*c.2y))))
+      g
+    }
+    orth.constr5D                 <- function(c){
+      c11 <- c[1]
+      c21 <- c[2]
+      c31 <- c[3] 
+      c41 <- c[4]
+      c51 <- c[5]
+      c12 <- c[6]
+      c22 <- c[7]
+      c32 <- c[8]
+      c42 <- c[9]
+      c52 <- c[10]
+      c13 <- c[11]
+      c23 <- c[12]
+      c33 <- c[13]
+      c43 <- c[14]
+      c53 <- c[15]
+      c14 <- c[16]
+      c24 <- c[17]
+      c34 <- c[18]
+      c44 <- c[19]
+      c54 <- c[20]
+      c15 <- c[21]
+      c25 <- c[22]
+      c35 <- c[23]
+      c45 <- c[24]
+      c55 <- c[25]
+      g <- rep(NA,15)
+      g[1] <- c11*c12 + c21*c22 + c31*c32 + c41*c42 + c51*c52 # c.1*c.2
+      g[2] <- c11*c13 + c21*c23 + c31*c33 + c41*c43 + c51*c53 # c.1*c.3
+      g[3] <- c11*c14 + c21*c24 + c31*c34 + c41*c44 + c51*c54 # c.1*c.4
+      g[4] <- c11*c15 + c21*c25 + c31*c35 + c41*c45 + c51*c55 # c.1*c.5
+      g[5] <- c12*c13 + c22*c23 + c32*c33 + c42*c43 + c52*c53 # c.2*c.3
+      g[6] <- c12*c14 + c22*c24 + c32*c34 + c42*c44 + c52*c54 # c.2*c.4
+      g[7] <- c12*c15 + c22*c25 + c32*c35 + c42*c45 + c52*c55 # c.2*c.5
+      g[8] <- c13*c14 + c23*c24 + c33*c34 + c43*c34 + c52*c54 # c.3*c.4
+      g[9] <- c13*c15 + c23*c25 + c33*c35 + c43*c35 + c52*c55 # c.3*c.5
+      g[10]<- c14*c15 + c24*c25 + c34*c35 + c44*c35 + c54*c55 # c.4*c.5
+      
+      g[11] <- c11^2 + c21^2 + c31^2 + c41^2 + c51^2- 1 # c.1*c.1
+      g[12] <- c12^2 + c22^2 + c32^2 + c41^2 + c52^2- 1 # c.2*c.2
+      g[13] <- c13^2 + c23^3 + c33^2 + c43^2 + c53^2- 1
+      g[14] <- c14^2 + c24^2 + c34^2 + c44^2 + c54^2- 1
+      g[15] <- c15^2 + c25^2 + c35^2 + c45^2 + c55^2- 1 
+      g
+    }
+    
+    please <- auglag(par = c(improvedLHS(n = 1,k = 25)), fn = pseudo.log.lik5D.super, heq = orth.constr5D,
+                     control.outer = list(trace=F))$par
+    A            <- matrix(data = please,nrow = 5,byrow = F)
+  }else if(k==3){
+    pseudo.log.lik3D.super      <- function(c) {
+      c11 <- c[1]
+      c21 <- c[2]
+      c31 <- c[3]
+      c12 <- c[4]
+      c22 <- c[5]
+      c32 <- c[6]
+      c13 <- c[7]
+      c23 <- c[8]
+      c33 <- c[9]
+      
+      c.1y <- c11*tu_cholb[,1] + c21*tu_cholb[,2] + c31*tu_cholb[,3]
+      c.2y <- c12*tu_cholb[,1] + c22*tu_cholb[,2] + c32*tu_cholb[,3]
+      c.3y <- c13*tu_cholb[,1] + c23*tu_cholb[,2] + c33*tu_cholb[,3]
+      
+      #P <- 1/(2 * p^(1/p - 1))*gamma(1/p)
+      g <- rep(NA,1)
+      g[1] <- -1*(n*log(1/sqrt(2*pi))-sum((c.1y)^2/2) + 
+                    n*log(gamma((5+1)/2)/(sqrt(5*pi)*gamma(5/2)))-((5+1)/2)*sum(log(1+(c.2y)^2/5)) + 
+                    n*log(gamma((12+1)/2)/(sqrt(12*pi)*gamma(12/2)))-((12+1)/2)*sum(log(1+(c.3y)^2/12)))
+      g
+    }
+    pseudo.log.lik3D.sub        <- function(c) {
+      c11 <- c[1]
+      c21 <- c[2]
+      c31 <- c[3]
+      c12 <- c[4]
+      c22 <- c[5]
+      c32 <- c[6]
+      c13 <- c[7]
+      c23 <- c[8]
+      c33 <- c[9]
+      
+      c.1y <- c11*tu_cholb[,1] + c21*tu_cholb[,2] + c31*tu_cholb[,3]
+      c.2y <- c12*tu_cholb[,1] + c22*tu_cholb[,2] + c32*tu_cholb[,3]
+      c.3y <- c13*tu_cholb[,1] + c23*tu_cholb[,2] + c33*tu_cholb[,3]
+      
+      #P <- 1/(2 * p^(1/p - 1))*gamma(1/p)
+      g <- rep(NA,1)
+      g[1] <- -1*(n*log(1/sqrt(2*pi)) + sum(pi*(c.1y)^2+log(cosh((pi/2)*c.1y))) + 
+                    n*log(1/sqrt(2*pi)) + sum(pi*(c.2y)^2+log(cosh((pi/2)*c.2y))) + 
+                    n*log(1/sqrt(2*pi)) + sum(pi*(c.3y)^2+log(cosh((pi/2)*c.3y))))
+      g
+    }
+    orth.constr3D               <- function(c){
+      c11 <- c[1]
+      c21 <- c[2]
+      c31 <- c[3]
+      c12 <- c[4]
+      c22 <- c[5]
+      c32 <- c[6]
+      c13 <- c[7]
+      c23 <- c[8]
+      c33 <- c[9]
+      g <- rep(NA,6)
+      g[1] <- c11*c12 + c21*c22 + c31*c32 # c.1*c.2
+      g[2] <- c11*c13 + c21*c23 + c31*c33 # c.1*c.3
+      g[3] <- c12*c13 + c22*c23 + c32*c33 # c.2*c.3
+      g[4] <- c11^2 + c21^2 + c31^2 - 1         # c.1*c.1
+      g[5] <- c12^2 + c22^2 + c32^2 - 1         # c.2*c.2
+      g[6] <- c13^2 + c23^2 + c33^2 - 1         # c.3*c.3
+      g
+    }
+    please                      <- auglag(par = p.start, fn = pseudo.log.lik3D.super, heq = orth.constr3D,
+                                          control.outer = list(trace=F))$par 
+    A_mixing                    <- matrix(data = please,nrow = 3,byrow = F)
+  }
+  
+  Praw         <- (P_chol) %*% (A_mixing)
   if (ordering == "frob") {
     P      <- Praw %*% myfrob(A.hat = Praw,A = x$B_original)
   }else if(ordering == "maxfinder"){
@@ -657,7 +964,7 @@ id.fastICA.gp <- function (x, ww, ordering)
       A_hat <- cbind(v, trend, A)
     }
   }
-  result <- list(B = P, A_hat = A_hat, method = "FastICA", 
+  result <- list(B = P, A_hat = A_hat, method = "PML", 
                  n = Tob, type = type, y = yOut, p = unname(p), K = k)
   class(result) <- "svars"
   return(result)
@@ -736,7 +1043,7 @@ imrf.gianluca <- function (y, B_hat, A_hat, type,horizon = 20)
 
 maxfinder <- function(A){
   ## A is the estimated mixing matrix
-  allperms <- permutations(n=nrow(A),r=ncol(A))
+  allperms <- gtools::permutations(n=nrow(A),r=ncol(A))
   nperms   <- nrow(allperms)
   A.perm   <- list()
   idx      <- list()
@@ -814,14 +1121,11 @@ mb.boot.gigi <- function (x, b.length = 15, n.ahead = 20, horizon, nboot, w00 = 
   Z <- t(y_lag_cr(y, p)$lags)
   if (x$type == "const") {
     Z <- rbind(rep(1, ncol(Z)), Z)
-  }
-  else if (x$type == "trend") {
+  } else if (x$type == "trend") {
     Z <- rbind(seq(1, ncol(Z)), Z)
-  }
-  else if (x$type == "both") {
+  } else if (x$type == "both") {
     Z <- rbind(rep(1, ncol(Z)), seq(1, ncol(Z)), Z)
-  }
-  else {
+  } else {
     Z <- Z
   }
   
@@ -838,15 +1142,12 @@ mb.boot.gigi <- function (x, b.length = 15, n.ahead = 20, horizon, nboot, w00 = 
   for (i in 1:nboot) {
     epsilon.star <- matrix(0, b.length * ceiling(N), ncol(u))
     epsilon.star <- list()
-    #jj <- 1
-    #SEED <- seq(1,nboot*ceiling(N))
+    
     for (kk in 1:ceiling(N)) {
-      #if (set_seed == T) {
-      #  set.seed(SEED[jj])
-      #}
+      
       epsilon.star[[kk]] <- blocks[, , floor(runif(1, 1, 
                                                    obs - b.length + 2))]
-      #jj <- jj + 1
+      
     }
     epsilon.star <- do.call("rbind", epsilon.star)
     for (s in 1:b.length) {
@@ -872,9 +1173,8 @@ mb.boot.gigi <- function (x, b.length = 15, n.ahead = 20, horizon, nboot, w00 = 
                                                              1):(i - p), ])) + Ustar1[j, (i - p)]
         }
       }
-    }
-    else if (x$type == "both") {
-      #ctt <- cbind(c(double(length = ncol(Ustar1))+1), seq(1,ncol(Ustar1),1))
+    } else if (x$type == "both") {
+      
       for (i in (p + 1):nrow(y)) {
         for (j in 1:k) {
           ## This works only with a VAR(4) in three variables with constant and trend
@@ -884,8 +1184,7 @@ mb.boot.gigi <- function (x, b.length = 15, n.ahead = 20, horizon, nboot, w00 = 
             A[j,c(12:14)] %*% Ystar[i-4,] + Ustar1[j,(i-p)]
         }
       }
-    }
-    else if (x$type == "none") {
+    } else if (x$type == "none") {
       for (i in (p + 1):nrow(y)) {
         for (j in 1:k) {
           Ystar[i, j] <- A[j, ] %*% c(t(Ystar[(i - p):(i - 
@@ -894,34 +1193,28 @@ mb.boot.gigi <- function (x, b.length = 15, n.ahead = 20, horizon, nboot, w00 = 
       }
     }
     colnames(Ystar) <- colnames(y)
-    varb <- suppressWarnings(VAR(Ystar, p = x$p, type = x$type))#exogen = EXOG2))
+    varb <- suppressWarnings(VAR(Ystar, p = x$p, type = x$type))
     varb$B_original <- x$B
     class(varb) <- "varest"
     Ustar <- residuals(varb)
     Sigma_u_star <- crossprod(Ustar)/(obs - 1 - k * p)
     if (method == "Non-Gaussian maximum likelihood") {
       temp <- id.ngml_boot(varb, stage3 = x$stage3, Z = Z)
-    }
-    else if (method == "Changes in Volatility") {
+    } else if (method == "Changes in Volatility") {
       temp <- tryCatch(id.cv_boot(varb, SB = x$SB, Z = Z, 
                                   restriction_matrix = x$restriction_matrix), error = function(e) NULL)
-    }
-    else if (method == "CvM") {
+    } else if (method == "CvM") {
       temp <- id.cvm.gp(varb, itermax = itermax, steptol = steptol, 
                         iter2 = iter2, dd,ordering = ordering)
       
-    }
-    else if (method == "Distance covariances") {
+    } else if (method == "Distance covariances") {
       ## here there is identification via maxfinder and same init
       temp <- id.dc.gp(varb, PIT = F,ww = w00,ordering = ordering) 
-    }
-    else if (method == "fastICA"){
-      temp <- id.fastICA.gp(varb,ww = w00,ordering = ordering)
-    }
-    else if (method == "PML"){
+    } else if (method == "fastICA"){
+      temp <- id.fastICA.gp(x = varb,ww = w00,ordering = ordering)
+    } else if (method == "PML"){
       temp <- id.pml.gp(x = varb,ww = w00,ordering = ordering)
-    }
-    else {
+    } else {
       temp <- tryCatch(id.st_boot(varb, c_fix = x$est_c, 
                                   transition_variable = x$transition_variable, 
                                   restriction_matrix = x$restriction_matrix, gamma_fix = x$est_g, 
@@ -1345,8 +1638,8 @@ myboot <- function(X, W, C = C, Bt, w.init = diag(nrow(W)), nrboot, method, disp
 
 myfrob <- function(A.hat, A){
   ##sign-column permutation that minimizes the frobenius norm of A.hat - A_0
-  a   <- permutations(ncol(A),ncol(A))
-  b   <- permutations(2,ncol(A),repeats.allowed = T)
+  a   <- gtools::permutations(ncol(A),ncol(A))
+  b   <- gtools::permutations(2,ncol(A),repeats.allowed = T)
   b[b==2] <- -1
   PR   <- vector("list", length = nrow(a)*nrow(b))
   frob <- double(length = nrow(a)*nrow(b))

@@ -2,7 +2,7 @@
 packages_needed <- c("lhs","gtools","copula","pgnorm","normtest",
                          "DEoptim","steadyICA","fastICA","JADE","tidyverse",
                          "matrixcalc","doParallel","doSNOW","doRNG","moments",
-                         "alabama","ProDenICA","gtools","pbapply","kableExtra","gridExtra")
+                         "alabama","ProDenICA","gtools","pbapply","kableExtra","gridExtra","Hmisc","vars")
 
 installed_packages  <- which(sapply(X = packages_needed,FUN = function(x) require(x,character.only = T))==F)
 packages_to_install <- sapply(X = installed_packages, FUN = function(x) install.packages(x,lib =  .libPaths(),
