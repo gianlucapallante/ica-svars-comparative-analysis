@@ -90,7 +90,7 @@ source(here("empirical_exercise","/maxlik3D-pml.R"),local = T)
 
 
 ## Select Best initial conditions
-n_lhs  <- 500 ## number of initializations
+n_lhs  <- 20 ## number of initializations
 
 ## Run initialization for FastICA, DCov and PML + CVM estimation
 source(here("empirical_exercise","find-init-and-cvm.R"),local = T)
@@ -232,7 +232,7 @@ save(point_irf,file = here("empirical_exercise","/point_irf_rep.RData"))
 
 print(paste0("Bootstrap IRF: Frobenius ordering"))
 
-boot_replications <- 500
+boot_replications <- 10
 bootstrap.ica <- mb.boot.gigi(x = coef.ica,horizon = 20,nboot = boot_replications,
                               w00 = w0[[final.index.ica]],method = "fastICA",set_seed = F,
                               ordering = "frob")
@@ -259,38 +259,4 @@ my_boot <- list(fastICA = bootstrap.ica,
                 CvM = bootstrap.cvm)
 
 save(my_boot,file = here("empirical_exercise","bootstrap_irfs_ordering_frob_temp.RData"))
-
-
-
-
-print(paste0("Bootstrap IRF: Max Finder ordering"))
-bootstrap.ica <- mb.boot.gigi(x = coef.ica,horizon = 20,nboot = boot_replications,
-                              w00 = w0[[final.index.ica]],method = "fastICA",set_seed = F,
-                              ordering = "maxfinder")
-
-
-bootstrap.dc <- mb.boot.gigi(x = coef.dc,horizon = 20,nboot = boot_replications,
-                             w00 = w0[[final.index.dc]],method = "Distance covariances",set_seed = F,
-                             ordering = "maxfinder")
-
-bootstrap.pml<- mb.boot.gigi(x = coef.pml,horizon = 20,nboot = boot_replications,
-                             w00 = w0[[final.index.pml]],method = "PML",set_seed = F,
-                             ordering = "maxfinder")
-
-print(paste0("Bootstrap started for CvM"))
-
-bootstrap.cvm<- mb.boot.gigi(x = coef.cvm,horizon = 20,nboot = boot_replications,
-                             w00 = w0[[final.index.cvm]],method = "CvM",set_seed = F,
-                             ordering = "maxfinder")
-
-my_boot <- list(fastICA = bootstrap.ica,
-                DCov = bootstrap.dc,
-                PML = bootstrap.pml,
-                CvM = bootstrap.cvm,
-                mixing_matrices = list(cvm = Aidcvm,pml = Aidpml,
-                                       fastica = Aidica, dc = Aiddc),
-                mixing_id = list(cvm = B.cvm,pml = B.pml,
-                                 fastica = B.ica, dc = B.dc))
-
-save(my_boot,file = "~/ica/replication-package/empirical_exercise/bootstrap_irfs_ordering_max.RData")
 
