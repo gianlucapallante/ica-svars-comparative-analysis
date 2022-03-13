@@ -90,7 +90,7 @@ source(here("empirical_exercise","/maxlik3D-pml.R"),local = T)
 
 
 ## Select Best initial conditions
-n_lhs  <- 20 ## number of initializations
+n_lhs  <- 500 ## number of initializations
 
 ## Run initialization for FastICA, DCov and PML + CVM estimation
 source(here("empirical_exercise","find-init-and-cvm.R"),local = T)
@@ -232,7 +232,7 @@ save(point_irf,file = here("empirical_exercise","/point_irf_rep.RData"))
 
 print(paste0("Bootstrap IRF: Frobenius ordering"))
 
-boot_replications <- 10
+boot_replications <- 500
 bootstrap.ica <- mb.boot.gigi(x = coef.ica,horizon = 20,nboot = boot_replications,
                               w00 = w0[[final.index.ica]],method = "fastICA",set_seed = F,
                               ordering = "frob")
