@@ -62,12 +62,9 @@ Btrue3D   <- solve(Wtrue3D)
 average_performance <- read_csv(file = here("final_databases","average_performance.csv")) %>% 
   dplyr::select(-"X1")
 
-errors <- read_csv(file = here("final_databases","p_value_errors.csv")) %>% 
-  dplyr::select(-"X1")
 
 Mixing_True <- list(Btrue2Dz = Btrue2Dz,
                     Btrue3D  = Btrue3D)
-
 
 percentiles <- NULL
 for (cc in 1:2) {
@@ -90,36 +87,88 @@ for (cc in 1:2) {
                              mutate(dimension = paste0("k=",cc+1)),percentiles)
   
 }
-rm(p,a,sa,d,mat,cond_number)
+
+
+## Bind files for CVM
+
+rm(p,a,sa,d,mat,cond_number,Btr3D)
+
+distr <- percentiles %>% as_tibble() %>% 
+  ggplot()+
+  geom_density(aes(x = MDI, group = dimension))+
+  facet_grid(~dimension)
+
+## Generate quantile of MDI distribution
 quantile_rnd_matrix <- percentiles %>% as_tibble() %>% 
   group_by(dimension) %>% 
   summarise(percentile_5 = quantile(MDI,probs = 0.1))
 
 
-errors %>% group_by(dimension,column,scenario,p_shape) %>% 
-  left_join(average_performance,.) %>% #
-  filter(scenario != "n=200") %>% 
+
+
+## Colors
+palette <- c('CvM'     = '#66c2a5',
+             'fastICA' = '#fc8d62',
+             'DCov'    = '#8da0cb',
+             'PML'     = '#e78ac3')
+
+shapes <- c('CvM'     = 21,
+            'fastICA' = 22,
+            'DCov'    = 24,
+            'PML'     = 23)
+
+average_performance %>% 
+  filter(scenario == "n=400") %>% 
   rename(MDI = "Minimum Distance") %>% 
   group_by(estimator,p_shape,scenario,dimension) %>% 
-  summarise_at(vars(MDI,p.value), list(mean = ~ mean(.),
-                                       sd   = ~ sd(.))) %>% 
+  summarise_at(vars(MDI), list(mean = ~ mean(.),
+                               sd   = ~ sd(.))) %>% 
   ungroup() %>% 
   left_join(.,quantile_rnd_matrix) %>% 
-  mutate(p_shape = as.factor(p_shape)) %>% 
+  mutate(p_shape = as.factor(p_shape),
+         estimator = factor(estimator,levels = c("PML","fastICA","DCov","CvM"))) %>% 
+  
   ggplot(.,aes(x = p_shape, group = estimator))+
-  geom_line(aes(y = MDI_mean,color = estimator), size = 1)+
-  geom_point(aes(y = MDI_mean,color = estimator, shape = estimator), size = 3)+
+  geom_line(aes(y = mean,color = estimator), size = 1)+
+  geom_point(aes(y = mean,color = estimator, shape = estimator, fill = estimator), size = 3)+
   geom_hline(aes(yintercept = percentile_5),linetype = "dotted")+
-  geom_ribbon(data = . %>% filter(p.value_mean>0.1), 
-              aes(xmin = p_shape[min(p.value_mean) & estimator == estimator], xmax = p_shape[max(p.value_mean)& estimator == estimator],
-                  ymin = -Inf, ymax = Inf),
-              alpha=0.08, fill = "grey" )+
-  facet_grid(dimension~scenario)+
-  scale_color_manual(values = palette, breaks = c( "CvM","DCov","fastICA","PML"))+
-  scale_fill_manual(values = palette, breaks = c( "CvM","DCov","fastICA","PML"))+
+  geom_ribbon(aes(ymin = mean - sd,ymax = mean + sd, fill = estimator), alpha = 0.3)+
+  facet_grid(dimension~estimator)+
+  scale_color_manual(values = palette,breaks = c("PML","fastICA","DCov","CvM"))+
+  scale_fill_manual(values = palette , breaks = c("PML","fastICA","DCov","CvM"))+
+  scale_shape_manual(values = shapes , breaks = c("PML","fastICA","DCov","CvM")) + 
   scale_x_discrete(breaks = c("0.5","1.57","2","2.43","4","52","100"))+
   theme_bw()+
   theme(panel.grid.major = element_blank(),
         legend.position = "bottom",
         strip.background = element_rect(fill = "white"))+
-  labs(title = "General Assessment", y = "MDI")
+  labs(title = "General Assessment", y = "MDI", 
+       fill = " ",color = " ",shape = " ")
+
+
+different_figure <- average_performance %>% 
+  filter(scenario != "n=200") %>% 
+  rename(MDI = "Minimum Distance") %>% 
+  group_by(estimator,p_shape,scenario,dimension) %>% 
+  summarise_at(vars(MDI), list(mean = ~ mean(.),
+                               sd   = ~ sd(.))) %>% 
+  ungroup() %>% 
+  left_join(.,quantile_rnd_matrix) %>% 
+  mutate(p_shape = as.factor(p_shape),
+         estimator = factor(estimator,levels = c("PML","fastICA","DCov","CvM"))) %>% 
+  
+  ggplot(.,aes(x = p_shape, group = estimator))+
+  geom_line(aes(y = mean,color = estimator), size = 1)+
+  geom_point(aes(y = mean,color = estimator, shape = estimator, fill = estimator), size = 3)+
+  geom_hline(aes(yintercept = percentile_5),linetype = "dotted")+
+  facet_grid(dimension~scenario)+
+  scale_color_manual(values = palette,breaks = c("PML","fastICA","DCov","CvM"))+
+  scale_fill_manual(values = palette , breaks = c("PML","fastICA","DCov","CvM"))+
+  scale_shape_manual(values = shapes , breaks = c("PML","fastICA","DCov","CvM")) + 
+  scale_x_discrete(breaks = c("0.5","1.57","2","2.43","4","52","100"))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        legend.position = "bottom",
+        strip.background = element_rect(fill = "white"))+
+  labs(title = "General Assessment", y = "MDI", 
+       fill = " ",color = " ",shape = " ")

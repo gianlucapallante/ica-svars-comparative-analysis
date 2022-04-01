@@ -54,8 +54,12 @@ if (is.null(dd)) {
 
 
 ## Number of initialization Hypercybe sampling
-set.seed(55)
-lhs <- 2*pi*improvedLHS(n = n_lhs, k = 2)
+if (n_lhs == 1) {
+  lhs <- matrix(data = c(0,0),nrow = 1)
+}else{
+  set.seed(55)
+  lhs            <- 2*pi*improvedLHS(n = n_lhs, k = 2)
+}
 
 pippo <- vector("list",length(SEQ))
 for(z in 1:length(SEQ)){

@@ -29,11 +29,11 @@ source(paste0(here(),"/Rpackages.R"),local = T)
 
 coefficient_distribution <- read_csv(file = here("final_databases","coefficient_distribution.csv"))
 
-
 coefficient_distribution %>% filter(scenario == "n=400") %>% 
   filter(entry %in% c("b11","b22","b12","b21")) %>% 
   ungroup() %>% 
   dplyr::select(dimension,estimator,entry,mean,sd,p_shape) %>% distinct() %>% 
+  mutate(p_shape = round(p_shape,2)) %>% 
   pivot_wider(names_from = c("p_shape","dimension"),values_from = c("mean","sd")) %>% 
   dplyr::select(estimator,entry,
                 "mean_0.5_k=2","sd_0.5_k=2",
@@ -44,7 +44,6 @@ coefficient_distribution %>% filter(scenario == "n=400") %>%
                 "mean_1.57_k=3","sd_1.57_k=3",
                 "mean_2.43_k=3","sd_2.43_k=3",
                 "mean_100_k=3","sd_100_k=3") %>% 
-  #arrange(factor(dimension,levels = c("k=2","k=3")),entry,factor(estimator, levels = c('PML','fastICA','DCov','CvM'))) %>%
   arrange(entry,factor(estimator, levels = c('PML','fastICA','DCov','CvM'))) %>% 
   mutate(entry = paste0("$\\hat{b_{",str_sub(entry,2,3),"}} - b_{",str_sub(entry,2,3),"}$"),
          estimator = case_when(
@@ -59,4 +58,3 @@ coefficient_distribution %>% filter(scenario == "n=400") %>%
                      rep(c("$mean$" = 1, "$sd$" = 1),8)),escape = F) %>% 
   add_header_above(c(" " = 2 ,rep(c("$p=0.5$" = 2, "$p=1.57$" = 2,"$p=2.47$" = 2,"$p=100$" = 2),2)),escape = F) %>% 
   add_header_above(c(" " = 2, "$k=2$" = 8, "$k=3$" = 8), escape = F)
-

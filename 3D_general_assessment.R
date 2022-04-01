@@ -49,8 +49,12 @@ if (is.null(dd)) {
   dd <- indepTestSim(n, ncol(Btrue3D), verbose = T)
 }
 ## Number of initialization Hypercybe sampling
-set.seed(55)
-lhs    <- 2*pi*improvedLHS(n = n_lhs, k = 3)
+if (n_lhs == 1) {
+  lhs <- matrix(data = c(0,0),nrow = 1)
+}else{
+  set.seed(55)
+  lhs            <- 2*pi*improvedLHS(n = n_lhs, k = 3)
+}
 
 for(z in 1:length(SEQ)){
   print(paste0("experiment ", z, " - first MC ", Sys.time()))
