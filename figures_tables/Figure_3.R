@@ -80,7 +80,8 @@ different_figure <- average_performance_spec %>%
        shape = " ")
 
 
-average_performance_spec %>% filter(scenario == "n=400") %>% 
+average_performance_spec %>% 
+  mutate(scenario = str_replace(scenario,"n","T")) %>% filter(scenario == "T=400") %>% 
   rename(MDI = "Minimum Distance") %>% 
   group_by(estimator,p_shape,scenario,dimension) %>% 
   summarise_at(vars(MDI), list(mean = ~ mean(.),
@@ -92,7 +93,7 @@ average_performance_spec %>% filter(scenario == "n=400") %>%
   geom_line(aes(y = mean,color = estimator), size = 1)+
   geom_point(aes(y = mean,color = estimator, shape = estimator, fill = estimator), size = 3)+
   geom_ribbon(aes(ymin = mean - sd,ymax = mean + sd, fill = estimator), alpha = 0.3)+
-  facet_grid(dimension~estimator)+
+  facet_grid(dimension ~ estimator)+
   scale_color_manual(values = palette, breaks = c("PML","fastICA","DCov","CvM"))+
   scale_fill_manual(values = palette, breaks = c("PML","fastICA","DCov","CvM"))+
   scale_shape_manual(values = shapes, breaks = c("PML","fastICA","DCov","CvM"))+
@@ -102,3 +103,4 @@ average_performance_spec %>% filter(scenario == "n=400") %>%
         legend.position = "bottom",
         strip.background = element_rect(fill = "white"))+
   labs(title = "Specific Assessment", y = "MDI")
+ss

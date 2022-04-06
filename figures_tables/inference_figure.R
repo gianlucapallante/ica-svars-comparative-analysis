@@ -36,20 +36,29 @@ df_graph <- table_inference %>%
   mutate(nominal_size = as.numeric(str_remove(nominal_size,"\\%"))/100) %>%
   mutate(size_distortion = value / nominal_size,
          nominal_size = as.factor(nominal_size)) %>%
-  mutate(dimension = paste0(str_sub(dimension,1,1), " = ",str_sub(dimension,3,3))) %>% 
-  group_by(estimator,dimension,nominal_size)
-  
+  mutate(dimension = paste0(str_sub(dimension,1,1), " = ",str_sub(dimension,3,3)),
+         p_shape = as.factor(p_shape),
+         p_shape = fct_relevel(p_shape,"p=0.5","p=1.57","p=2.43","p=100"))
+
 
 p1 <- df_graph %>% 
+  mutate(estimator = case_when(
+    estimator == "Distance Covariance" ~ "DCov",
+    T ~ estimator
+  )) %>% 
+  arrange(desc(estimator)) %>% 
+  mutate(estimator = fct_inorder(estimator)) %>% 
   ggplot(aes(x = nominal_size))+
   geom_boxplot(aes(x = nominal_size,y = size_distortion, 
                    group = interaction(dimension,nominal_size),
                    col = dimension,fill = dimension), alpha = 0.2)+
   geom_hline(yintercept = 1, linetype = "dashed")+
-  facet_grid(~estimator)+
+  facet_grid(estimator~p_shape)+
+  coord_flip()+
   theme_bw()+
   theme(panel.grid.major.x = element_blank(),
         panel.grid.minor.x = element_blank(),
+        legend.position = "bottom",
         strip.background = element_rect(fill = "white"))+
   labs(y = "Size distortion", x = "", fill = "Dimension", col = "Dimension")
 p1

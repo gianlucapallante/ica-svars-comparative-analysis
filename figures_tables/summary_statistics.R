@@ -51,7 +51,7 @@ coefficient_distribution %>% filter(scenario == "n=400") %>%
            T ~ paste0("$",estimator,"$")
          )) %>% 
   mutate(entry = if_else(estimator == "$PML$",entry,"")) %>% 
-  print() %>% 
+  print() %>%
   kable(.,format = "latex",escape = F,col.names = NULL,
         booktabs = T, digits = 3) %>% 
   add_header_above(c(" " = 2, 
