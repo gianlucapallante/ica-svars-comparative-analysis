@@ -339,6 +339,8 @@ id.cvm.gp <- function (x, dd = NULL, itermax = 500, steptol = 100, iter2 = 75,or
     B_hat      <- B_hat %*% myfrob(A.hat = B_hat,A = x$B_original)
   }else if(ordering == "maxfinder"){
     B_hat      <- maxfinder(A = B_hat)$A.id
+  }else if(ordering == "lanne-saik"){
+    P      <- lanne_saik(original_M = Praw)
   }else{
     stop("Specifiy method for column-permutation indeterminacy")
   }
@@ -477,6 +479,8 @@ id.dc.gp <- function (x, PIT= T, ww, ordering)
     P      <- Praw %*% myfrob(A.hat = Praw,A = x$B_original)
   }else if(ordering == "maxfinder"){
     P      <- maxfinder(A = Praw)$A.id
+  }else if(ordering == "lanne-saik"){
+    P      <- lanne_saik(original_M = Praw)
   }else{
     stop("Specifiy method for column-permutation indeterminacy")
   }
@@ -531,6 +535,7 @@ id.fastICA.gp <- function (x, ww, ordering)
     Tob <- nrow(u)
     k <- ncol(u)
     residY <- u
+    n <- nrow(residY)
   } else {
     u <- residuals(x)
     Tob <- nrow(u)
@@ -611,6 +616,8 @@ id.fastICA.gp <- function (x, ww, ordering)
     P      <- Praw %*% myfrob(A.hat = Praw,A = x$B_original)
   }else if(ordering == "maxfinder"){
     P      <- maxfinder(A = Praw)$A.id
+  }else if(ordering == "lanne-saik"){
+    P      <- lanne_saik(original_M = Praw)
   }else{
     stop("Specifiy method for column-permutation indeterminacy")
   }
@@ -925,6 +932,8 @@ id.pml.gp <- function (x, ww, ordering)
     P      <- Praw %*% myfrob(A.hat = Praw,A = x$B_original)
   }else if(ordering == "maxfinder"){
     P      <- maxfinder(A = Praw)$A.id
+  }else if(ordering == "lanne-saik"){
+    P      <- lanne_saik(original_M = Praw)
   }else{
     stop("Specifiy method for column-permutation indeterminacy")
   }
@@ -1193,11 +1202,11 @@ mb.boot.gigi <- function (x, b.length = 15, n.ahead = 20, horizon, nboot, w00 = 
       }
     }
     colnames(Ystar) <- colnames(y)
-    varb <- suppressWarnings(VAR(Ystar, p = x$p, type = x$type))
+    varb            <- suppressWarnings(VAR(Ystar, p = x$p, type = x$type))
     varb$B_original <- x$B
-    class(varb) <- "varest"
-    Ustar <- residuals(varb)
-    Sigma_u_star <- crossprod(Ustar)/(obs - 1 - k * p)
+    class(varb)     <- "varest"
+    Ustar           <- residuals(varb)
+    Sigma_u_star    <- crossprod(Ustar)/(obs - 1 - k * p)
     if (method == "Non-Gaussian maximum likelihood") {
       temp <- id.ngml_boot(varb, stage3 = x$stage3, Z = Z)
     } else if (method == "Changes in Volatility") {
@@ -1799,136 +1808,286 @@ rotmat <- function(pv, faklow) {
 }
 
 
-wild.boot.gp <- function(X, B, C = C, w.init = diag(nrow(W)), nrboot, method, display = T, quantiles, ordering) {
-  ## Bootstrap on mixing matrix pmts
-  ## X are the orthogonalized reduced-form residuals
-  ## W is the unmixing matrix estimated
-  ## C is the Choleski factor of U
-  dims <- dim(X)
-  nbootstrap <- nrboot # number or bootstrap samples
-  save_W <- array(NA,dim=c(nbootstrap,dims[2]^2))
-  save_B <- array(NA,dim=c(nbootstrap,dims[2]^2))
-  
-  nbootobs <- dims[1] # number of observations in each bootstrap sample
+wild.boot.gp <- function (x, design = "fixed", distr = "rademacher", horizon = 20, w00 = diag(x$K),
+                          nboot = 500, nc = 1, dd = NULL, signrest = NULL, signcheck = TRUE, set_seed = F,
+                          itermax = 300, steptol = 200, iter2 = 50, rademacher = "deprecated", method = "fastICA",
+                          ordering = "frob") 
+{
   
   
-  for (i in 1:nbootstrap) {
-    if ((i%%10 == 0) & display) {cat("bootstrap run", i, "out of", nbootstrap, "\n")}
-    pick <- sample(dims[1], nbootobs, replace = TRUE)
-    
-    X_boot  <- X*rnorm(n = nrow(X))
-    
-    if (method=="fastICA"){
-      icares <- fastICA(X_boot, ncol(B), tol=1e-6, w.init=w.init )
-      W.ica              <- t((icares$K) %*% (icares$W))
-      W.scal.ica         <- rescaleVar(W_hat = W.ica, ut = t(X_boot))$Ws
-      icares_MD          <- W.scal.ica %*% solve(C)
-      W_boot             <- icares_MD
-      if(ordering == "maxfinder"){
-        B_boot              <- maxfinder(A = solve(W_boot))$A.id
-      } else if(ordering == "frob") B_boot         <- solve(W_boot) %*% myfrob(A.hat = solve(W_boot),A = B)
-      B_boot[,1]*1/B[1,1] ->B_boot[,1]
-      B_boot[,2]*1/B[2,2] ->B_boot[,2]
-      B_boot[,3]*1/B[3,3] ->B_boot[,3]
-    }else if(method == "DCov"){
-      DCov               <- steadyICA(X_boot, n.comp = ncol(B), w.init = w.init, 
-                                      PIT = F, symmetric = F,maxit = 1000,verbose = F)
-      #DCov               <- dcovICA(Z = X_boot,theta.0 = w.init)
-      DC_MD              <- solve(DCov$W) %*% solve(C)
-      W_boot             <- DC_MD
-      if(ordering == "max"){
-        B_boot              <- maxfinder(A = solve(W_boot))$A.id
-      } else if(ordering == "frob") B_boot         <- solve(W_boot) %*% myfrob(A.hat = solve(W_boot),A = B)
-      B_boot[,1]*1/B[1,1] ->B_boot[,1]
-      B_boot[,2]*1/B[2,2] ->B_boot[,2]
-      B_boot[,3]*1/B[3,3] ->B_boot[,3]
-      
-    }else if(method == "CvM"){
-      if (is.null(dd)) {
-        dd <- indepTestSim(n, ncol(X), verbose = F)
+  y_lag_cr <- function(y, lag_length) {
+    y_lag <- matrix(NA, dim(y)[1], dim(y)[2] * lag_length)
+    for (i in 1:lag_length) {
+      y_lag[(1 + i):dim(y)[1], ((i * NCOL(y) - NCOL(y)) + 
+                                  1):(i * NCOL(y))] <- y[1:(dim(y)[1] - i), (1:NCOL(y))]
+    }
+    y_lag <- as.matrix(y_lag[-(1:lag_length), ])
+    out <- list(lags = y_lag)
+  }
+  
+  
+  sqrt.f <- function(Pstar, Sigma_u_star) {
+    yy <- suppressMessages(sqrtm(Sigma_u_hat_old)) %*% solve(suppressMessages(sqrtm(Sigma_u_star))) %*% 
+      Pstar
+    return(yy)
+  }
+  if (!inherits(x$y, c("matrix", "ts"))) {
+    y = as.matrix(x$y)
+  } else {
+    y <- x$y
+  }
+  p <- x$p
+  obs <- x$n
+  k <- x$K
+  B <- x$B
+  
+  A <- x$A_hat
+  Z <- t(y_lag_cr(y, p)$lags)
+  if (x$type == "const") {
+    Z <- rbind(rep(1, ncol(Z)), Z)
+  } else if (x$type == "trend") {
+    Z <- rbind(seq(p + 1, ncol(Z) + p), Z)
+  } else if (x$type == "both") {
+    Z <- rbind(rep(1, ncol(Z)), seq(p + 1, ncol(Z) + p), 
+               Z)
+  } else {
+    Z <- Z
+  }
+  u <- t(y[-c(1:p), ]) - A %*% Z
+  Sigma_u_hat_old <- tcrossprod(u)/(obs - 1 - k * p)
+  ub <- u
+  errors <- list()
+  if (rademacher != "deprecated") {
+    if (rademacher == "TRUE") {
+      warning("The argument 'rademacher' is deprecated and may not be supported in the future. Please use the argument 'distr' to decide upon a distribution.", 
+              call. = TRUE, immediate. = FALSE, noBreaks. = FALSE, 
+              domain = NULL)
+    }
+    else if (rademacher == "FALSE") {
+      distr <- "gaussian"
+      warning("The argument 'rademacher' is deprecated and may not be supported in the future. Please use the argument 'distr' to decide upon a distribution.", 
+              call. = TRUE, immediate. = FALSE, noBreaks. = FALSE, 
+              domain = NULL)
+    }
+    else {
+      warning("Invalid use of deprecated argument 'rademacher'. Please use the argument 'distr' to decide upon a distribution!", 
+              call. = TRUE, immediate. = FALSE, noBreaks. = FALSE, 
+              domain = NULL)
+    }
+  }
+  for (i in 1:nboot) {
+    ub <- u
+    if (distr == "rademacher") {
+      my <- rnorm(n = ncol(u))
+      my <- (my > 0) - (my < 0)
+    }
+    else if (distr == "mammen") {
+      cu <- (sqrt(5) + 1)/(2 * sqrt(5))
+      my <- rep(1, ncol(u)) * (-(sqrt(5) - 1)/2)
+      uni <- runif(n = ncol(u), min = 0, max = 1)
+      my[uni > cu] <- (sqrt(5) + 1)/2
+    }
+    else if (distr == "gaussian") {
+      my <- rnorm(n = ncol(u))
+    }
+    errors[[i]] <- ub * my
+  }
+  bootf <- function(Ustar1) {
+    if (design == "fixed") {
+      Ystar <- t(A %*% Z + Ustar1)
+      Bstar <- t(Ystar) %*% t(Z) %*% solve(Z %*% t(Z))
+      Ustar <- Ystar - t(Bstar %*% Z)
+      Sigma_u_star <- crossprod(Ustar)/(ncol(Ustar1) - 
+                                          1 - k * p)
+      varb <- list(y = Ystar, coef_x = Bstar, residuals = Ustar, 
+                   p = p, type = x$type)
+      varb$B_original <- x$B
+      class(varb) <- "var.boot"
+      if (method == "Distance covariances") {
+        ## here there is identification via maxfinder and same init
+        temp <- id.dc.gp(varb, PIT = F,ww = w00,ordering = ordering) 
+      } else if (method == "fastICA"){
+        temp <- id.fastICA.gp(x = varb,ww = w00,ordering = ordering)
+      } else if (x$method == "Cholesky") {
+        temp <- id.chol(varb, order_k = x$order_k)
       }
-      lower <- rep(0, ncol(X) * (ncol(X) - 1)/2)
-      upper <- rep(pi, ncol(X) * (ncol(X) - 1)/2)
-      de_control <- list(itermax = 500, steptol = 100, 
-                         trace = FALSE)
-      ## First step of optimization with DEoptim
-      
-      de_res <- DEoptim(testlik, lower = lower, upper = upper, 
-                        control = de_control, faklow = C, u = X_boot, dd = dd) #U or u_chol
-      k <- ncol(X)
-      iter2  <- 75
-      ## Second step of optimization. Creating randomized starting angles around the optimized angles
-      ## here maybe you insert the LHS stuff
-      theta_rot <- matrix(rnorm(n = (k * (k - 1)/2) * iter2, mean = de_res$optim$bestmem, 
-                                sd = 0.3), (k * (k - 1)/2), iter2)
-      theta_rot <- cbind(theta_rot, de_res$optim$bestmem)
-      # Start vectors for iterative optimization approach
-      startvec_list <- as.list(as.data.frame(theta_rot))
-      erg_list <- lapply(X = startvec_list, FUN = optim, fn = testlik, 
-                         gr = NULL, faklow = C, u = X_boot, dd = dd, 
-                         method = ifelse(k == 2, "Brent", "Nelder-Mead"), 
-                         lower = ifelse(k == 2, -.Machine$double.xmax/2, -Inf), 
-                         upper = ifelse(k == 2, .Machine$double.xmax/2, Inf), 
-                         control = list(maxit = 1000), 
-                         hessian = FALSE)
-      
-      # Print log-likelihood values from local maxima
-      logliks <- sapply(erg_list, "[[", "value")
-      if (min(logliks) < de_res$optim$bestval) {
-        params <- sapply(erg_list, "[[", "par", simplify = FALSE)
-        par_o <- params[[which.min(logliks)]]
-        logs <- min(logliks)
-        inc <- 1
+      else {
+        stop("method is either Distance Covariances, fastsICA or Cholesky")
+      }
+    }
+    else if (design == "recursive") {
+      Ystar <- matrix(0, nrow(y), k)
+      Ystar[1:p, ] <- y[1:p, ]
+      if (x$type == "const" | x$type == "trend") {
+        for (i in (p + 1):nrow(y)) {
+          for (j in 1:k) {
+            Ystar[i, j] <- A[j, 1] + A[j, -1] %*% c(t(Ystar[(i - 
+                                                               1):(i - p), ])) + Ustar1[j, (i - p)]
+          }
+        }
+      }
+      else if (x$type == "both") {
+        for (i in (p + 1):nrow(y)) {
+          for (j in 1:k) {
+            Ystar[i, j] <- A[j, 1] + A[j, 2] + A[j, 
+                                                 -c(1, 2)] %*% c(t(Ystar[(i - 1):(i - p), 
+                                                 ])) + Ustar1[j, (i - p)]
+          }
+        }
+      }
+      else if (x$type == "none") {
+        for (i in (p + 1):nrow(y)) {
+          for (j in 1:k) {
+            Ystar[i, j] <- A[j, ] %*% c(t(Ystar[(i - 
+                                                   1):(i - p), ])) + Ustar1[j, (i - p)]
+          }
+        }
+      }
+      Ystar <- Ystar[-c(1:p), ]
+      varb <- suppressWarnings(VAR(Ystar, p = x$p, type = x$type))
+      varb$B_original <- x$B
+      Ustar <- residuals(varb)
+      Sigma_u_star <- crossprod(Ustar)/(obs - 1 - k * 
+                                          p)
+      if (method == "Distance covariances") {
+        ## here there is identification via maxfinder and same init
+        temp <- id.dc.gp(varb, PIT = F,ww = w00,ordering = ordering) 
+      } else if (method == "fastICA"){
+        temp <- id.fastICA.gp(x = varb,ww = w00,ordering = ordering)
+      } else if (x$method == "Cholesky") {
+        temp <- id.chol(varb, order_k = x$order_k)
+      }
+      else {
+        stop("method is either Distance Covariances, fastsICA or Cholesky")
+      }
+    }
+    
+    if (!is.null(temp)) {
+      Pstar <- temp$B
+      if (!is.null(x$restriction_matrix)) {
+        #Pstar1 <- Pstar
+        #frobP <- frobICA_mod(Pstar1, B, standardize = TRUE)
+        #Pstar1 <- maxfinder(A = Pstar)$A.id
       } else {
-        par_o <- de_res$optim$bestmem
-        logs <- de_res$optim$bestval
-        inc <- 0
+        #Pstar1 <- sqrt.f(Pstar, Sigma_u_star)
+        #diag_sigma_root <- diag(diag(suppressMessages(sqrtm(Sigma_u_hat_old))))
+        #frobP <- frobICA_mod(t(solve(diag_sigma_root) %*% 
+        #                         Pstar1), t(solve(diag_sigma_root) %*% B), standardize = TRUE)
       }
-      Acvm               <- rotmat(par_o, C)
-      if(ordering == "max"){
-        B_boot              <- maxfinder(A = Acvm)$A.id
-      } else if(ordering == "frob") B_boot         <- Acvm %*% myfrob(A.hat = Acvm,A = B)
-      B_boot[,1]*1/B[1,1] ->B_boot[,1]
-      B_boot[,2]*1/B[2,2] ->B_boot[,2]
-      B_boot[,3]*1/B[3,3] ->B_boot[,3]
+      #Pstar <- Pstar1 %*% frobP$perm
+      #temp$B <- Pstar
+      #Pstar <- Pstar1
+      ip.tot <- imrf.gianluca(y = temp$y,A_hat = temp$A_hat,
+                              B_hat = Pstar, horizon = horizon, type = temp$type)
+      ip     <- ip.tot$impulse
+      Pstar  <- ip.tot$B_hat
+      return(list(ip, Pstar))
     }
-    W_boot <- solve(B_boot)
-    
-  
-    
-    
-    save_B[i,] <- as.vector(B_boot)
-    
-    
-  }
-  B.boot <- vector("list",length = nrboot)
-  test.t <- array(data = NA,dim = c(ncol(C),ncol(C),length(quantiles)),
-                  dimnames = list(paste0(seq(1,ncol(C),1)),paste0(seq(1,ncol(C),1)), paste0(quantiles)))
-  
-  for (j in 1:nbootstrap){
-    B.boot[[j]] <- (matrix(data = save_B[j,],nrow = ncol(C),ncol = ncol(C),byrow = F))
-  }
-  cnt <- 0
-  for (alpha in quantiles){
-    
-    cnt <- cnt +1
-    
-    for (r in 1:nrow(C)){
-      for (c in 1:ncol(C)){
-        ## create columns with bootstrap estimates of the pmt
-        eval(parse(text=paste("b",r,c,".boot<-do.call(rbind,lapply(B.boot,'[',",r,",",c,"))", sep="")))
-        ## create columns with bootstrap estimates of b_boot - b_true, b_true = 0
-        eval(parse(text=paste("XX",r,c," <- b",r,c,".boot",sep="")))
-        a <- quantile(x = eval(parse(text=paste("XX",r,c,sep = ""))),probs = c(alpha/2, (1-alpha/2)))
-        if (0 < min(a) | 0 > max(a)){
-          test.t[r,c,cnt] <- TRUE ##  reject = 0
-        }else test.t[r,c,cnt] <- FALSE 
-      }
+    else {
+      return(NA)
     }
   }
-  ls   <- list(w.pmts = save_W, B_boot = B.boot, test = test.t)
-  return(ls)
+  
+  bootstraps <- pblapply(errors, bootf, cl = nc)
+  
+  
+  delnull <- function(x) {
+    x[unlist(lapply(x, length) != 0)]
+  }
+  bootstraps <- lapply(bootstraps, function(x) x[any(!is.na(x))])
+  bootstraps <- delnull(bootstraps)
+  Bs <- array(0, c(k, k, length(bootstraps)))
+  ipb <- list()
+  for (i in 1:length(bootstraps)) {
+    Bs[, , i] <- bootstraps[[i]][[2]]
+    ipb[[i]] <- bootstraps[[i]][[1]]
+  }
+  v.b <- matrix(Bs, ncol = k^2, byrow = T)
+  cov.bs <- cov(v.b)
+  if (method == "CvM" | method ==  "Distance covariances" | method == "fastICA"| method == "PML") {
+    SE <- matrix(sqrt(diag(cov.bs)), k, k)
+    rownames(SE) <- rownames(x$B)
+  } else {
+    SE <- NULL
+  }
+  boot.mean <- matrix(colMeans(v.b), k, k)
+  rownames(boot.mean) <- rownames(x$B)
+  if (!is.null(x$restriction_matrix)) {
+    if (!is.null(signrest)) {
+      cat("Testing signs only possible for unrestricted model \n")
+    }
+    sign.part <- NULL
+    sign.complete <- NULL
+  } else {
+    if (is.null(signrest)) {
+      sign.mat <- matrix(FALSE, nrow = k, ncol = k)
+      sign.complete <- 0
+      sign.part <- rep(0, times = k)
+      for (i in 1:length(bootstraps)) {
+        pBs <- permutation(Bs[, , i])
+        sign.mat <- lapply(pBs, function(z) {
+          sapply(1:k, function(ii) {
+            all(z[, ii]/abs(z[, ii]) == x$B[, ii]/abs(x$B[, 
+                                                          ii])) | all(z[, ii]/abs(z[, ii]) == x$B[, 
+                                                                                                  ii]/abs(x$B[, ii]) * (-1))
+          })
+        })
+        if (any(unlist(lapply(sign.mat, function(sign.mat) all(sign.mat == 
+                                                               TRUE))))) {
+          sign.complete <- sign.complete + 1
+        }
+        for (j in 1:k) {
+          check <- rep(FALSE, k)
+          for (l in 1:k) {
+            check[l] <- any(all(pBs[[1]][, l]/abs(pBs[[1]][, 
+                                                           l]) == x$B[, j]/abs(x$B)[, j]) | all(pBs[[1]][, 
+                                                                                                         l]/abs(pBs[[1]][, l]) == x$B[, j]/abs(x$B)[, 
+                                                                                                                                                    j] * (-1)))
+          }
+          if (sum(check) == 1) {
+            sign.part[[j]] <- sign.part[[j]] + 1
+          }
+        }
+      }
+    }
+    else {
+      nrest <- length(signrest)
+      sign.part <- rep(list(0), nrest)
+      sign.complete <- 0
+      for (j in 1:length(bootstraps)) {
+        check.full <- 0
+        for (i in 1:nrest) {
+          check <- rep(FALSE, length(signrest[[i]][!is.na(signrest[[i]])]))
+          for (l in 1:k) {
+            check[l] <- any(all(Bs[!is.na(signrest[[i]]), 
+                                   l, j]/abs(Bs[!is.na(signrest[[i]]), l, 
+                                                j]) == signrest[[i]][!is.na(signrest[[i]])]) | 
+                              all(Bs[!is.na(signrest[[i]]), l, j]/abs(Bs[!is.na(signrest[[i]]), 
+                                                                         l, j]) == signrest[[i]][!is.na(signrest[[i]])] * 
+                                    (-1)))
+          }
+          if (sum(check) == 1) {
+            sign.part[[i]] <- sign.part[[i]] + 1
+            check.full <- check.full + 1
+          }
+        }
+        if (check.full == nrest) {
+          sign.complete <- sign.complete + 1
+        }
+      }
+      names(sign.part) <- names(signrest)
+    }
+  }
+  ip <- imrf.gianluca(y = x$y ,B_hat = boot.mean, 
+                      horizon = horizon,type = x$type,A_hat = A)$impulse
+  result <- list(true = ip, bootstrap = ipb, SE = SE, nboot = nboot, 
+                 point_estimate = x$B, boot_mean = boot.mean, 
+                 signrest = signrest, sign_complete = sign.complete, sign_part = sign.part, 
+                 cov_bs = cov.bs, method = "Wild Bootstrap")
+  class(result) <- "sboot"
+  return(result)
 }
+
 
 
 ## Sub gaussian
@@ -2027,6 +2186,64 @@ orth.constr3D    <- function(c){
   g[5] <- c12^2 + c22^2 + c32^2 - 1         # c.2*c.2
   g[6] <- c13^2 + c23^2 + c33^2 - 1         # c.3*c.3
   g
+}
+
+
+lanne_saik <- function(original_M){
+  ## Define all possible column-permutations
+  library(tidyverse)
+  library(gtools)
+  
+  pp <- gtools::permutations(ncol(original_M),ncol(original_M))
+  pr  <- diag(ncol(original_M))
+  
+  ## Define Matrix
+  M <- original_M %*% pr[,pp[1,]]
+  
+  ## Empty objects
+  bd1p <- vector(mode = "list",length = nrow(pp))
+  test <- vector(mode = "list",length = nrow(pp))
+  
+  ## Entries that satisfy the condition
+  nn <- double(length = ncol(M))
+  
+  ## Step 1 of identification scheme
+  for (i in 1:ncol(M)) {
+    nn[i]    <- norm(M[,i],type = "2")
+  }
+  ## Normalize 
+  BD1 <- M %*% solve(diag(nn))
+  
+  
+  ## Step 2 of identification scheme
+  for (p in 1:nrow(pp)) {
+    bd1p[[p]] <- BD1 %*% pr[,pp[p,]]
+    test[[p]]$result <- double(length = nrow(M)^2)
+    count <- 1
+    for (i in 1:nrow(M)) {
+      for (j in 1:ncol(M)) {
+        
+        if (i < j){
+          
+          if(abs(bd1p[[p]][i,i]) > abs(bd1p[[p]][i,j])){
+            
+            test[[p]]$result[count] <- 1
+          }
+        }
+        test[[p]]$fn_res <- sum(test[[p]]$result)
+        count <- count + 1
+      }
+      
+    }
+  }  
+  right_ordering <- which(lapply(test, function(x) x$fn_res == ncol(M)*(ncol(M)-1)/2) == T)
+  ordered_M      <- original_M %*% pr[,pp[right_ordering,]]
+  ordered_M      <- ordered_M %*% diag(sign(diag(ordered_M)))
+  
+  
+  
+  return(ordered_M = ordered_M)
+  
 }
 
 

@@ -30,8 +30,8 @@ source(paste0(here(),"/Rpackages.R"),local = T)
 
 
 ## Load database with IRFs
-load(file = here("final_databases","bootstrap_irfs_ordering_frob.RData"))
-
+#load(file = here("final_databases","lanne_bootstrap_irfs_ordering_frob_temp.RData"))
+load(file = here("empirical_exercise","lanne_bootstrap_irfs_ordering_frob_temp.RData"))
 ## Boostrap IRFS
 
 bootstrap.irfs <- list(fastICA = my_boot$fastICA,
